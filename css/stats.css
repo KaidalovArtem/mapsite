@@ -287,6 +287,49 @@ code {
     color: var(--text-muted);
 }
 
+/* ---------- Кат подробных разделов ---------- */
+
+.stats-more {
+    margin-bottom: 18px;
+}
+
+.stats-more-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 22px;
+    background: var(--surface);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+    font-weight: 700;
+    list-style: none;
+}
+
+.stats-more-summary::-webkit-details-marker {
+    display: none;
+}
+
+.stats-more-summary:hover {
+    background: var(--gray-50);
+}
+
+.stats-more-summary::after {
+    content: '▾';
+    color: var(--text-muted);
+    transition: transform var(--transition-fast);
+}
+
+.stats-more[open] .stats-more-summary {
+    margin-bottom: 18px;
+}
+
+.stats-more[open] .stats-more-summary::after {
+    transform: rotate(180deg);
+}
+
 .stats-panel-title-row {
     display: flex;
     align-items: center;
@@ -624,11 +667,11 @@ code {
     border-left: 1px solid var(--gray-300);
 }
 
-.stats-table--matrix tbody tr.is-inactive {
+.stats-table tbody tr.is-inactive {
     opacity: 0.55;
 }
 
-.stats-table--matrix tbody tr.is-inactive:hover {
+.stats-table tbody tr.is-inactive:hover {
     opacity: 0.78;
 }
 
@@ -938,9 +981,17 @@ code {
         border-radius: var(--radius-lg);
     }
 
+    .stats-more-summary {
+        padding: 14px;
+    }
+
     .stats-panel-head {
         flex-direction: column;
         gap: 8px;
+    }
+
+    .stats-panel h2 {
+        white-space: normal;
     }
 
     .stats-chart-wrap {
