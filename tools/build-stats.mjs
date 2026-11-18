@@ -45,12 +45,56 @@ const REGION_IDS = {
     'Херсонская область': 'kherson',
     'Сумская область': 'sumy',
     'Харьковская область': 'kharkiv',
-    'Днепропетровская область': 'dnipropetrovsk'
+    'Днепропетровская область': 'dnipropetrovsk',
+    'Черниговская область': 'chernihiv'
 };
+
+// Группы областей: строки таблицы областей на странице статистики и цвета
+// границ на карте. Направления и группировки не делятся по группам.
+// colors — оттенки границ и линий областей по порядку области в группе.
+// total: true — в таблице областей выводится итоговая взвешенная доля группы.
+const REGION_GROUPS = [
+    {
+        id: 'g1',
+        name: 'Конституционные',
+        nameEn: 'Constitutional',
+        color: '#c81e0f',
+        colors: ['#c81e0f', '#a4161a', '#e5383b', '#7f1010'],
+        total: true,
+        regions: ['lnr', 'dnr', 'zaporizhzhia', 'kherson']
+    },
+    {
+        id: 'g2',
+        name: 'Зоны безопасности',
+        nameEn: 'Security zones',
+        color: '#2f63b8',
+        colors: ['#2f63b8', '#1d4e89', '#3a86ff', '#4a6fa5'],
+        total: false,
+        regions: ['kharkiv', 'sumy', 'dnipropetrovsk', 'chernihiv']
+    }
+];
 
 function fail(message) {
     console.error('Ошибка: ' + message);
     process.exit(1);
+}
+
+// Предупреждает, если группа забыла область или id повторяется:
+// такая область не попадёт в сгруппированную таблицу.
+function checkGroups(stats) {
+    const seen = new Map();
+    for (const group of REGION_GROUPS) {
+        for (const id of group.regions || []) {
+            if (seen.has(id)) console.warn('Область ' + id + ' в двух группах: ' + seen.get(id) + ', ' + group.id);
+            seen.set(id, group.id);
+        }
+    }
+    for (const region of stats.regions || []) {
+        if (!seen.has(region.id)) console.warn('Область ' + region.id + ' не входит ни в одну группу');
+    }
+    console.log('\nГруппы областей: ' + REGION_GROUPS.map(group =>
+        group.id + ' (' + (group.regions || []).length + ' обл.)'
+    ).join(', '));
 }
 
 if (!fs.existsSync(controlDir)) fail('не найдена папка ' + controlDir);
@@ -174,6 +218,9 @@ const result = StatsEngine.buildStats(snapshots, rings, clip, {
     generator: 'tools/build-stats.mjs',
     generatedAt: new Date().toISOString()
 });
+
+result.regionGroups = REGION_GROUPS;
+checkGroups(result);
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 fs.writeFileSync(outputPath, JSON.stringify(result, null, 2) + '\n');

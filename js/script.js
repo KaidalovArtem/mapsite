@@ -3168,9 +3168,11 @@ function switchMapStatViewByBtn(mapBtn, stats1Btn, stats2Btn)
     const allBtns = [mapBtn, stats1Btn, stats2Btn].filter(Boolean);
     
     function switchView(activeBtn, activeContainer) {
-        // Сбрасываем активное состояние у всех кнопок и контейнеров
+        // Сбрасываем активное состояние у всех кнопок и контейнеров.
+        // Контейнеры статистики могут быть закомментированы в разметке — фильтруем null,
+        // иначе клик по «Карта» прячет карту и падает на следующем контейнере.
         allBtns.forEach(btn => btn.classList.remove('active'));
-        [mapContainer, stats1Container, stats2Container].forEach(container => {
+        [mapContainer, stats1Container, stats2Container].filter(Boolean).forEach(container => {
             container.classList.remove('active');
             container.style.display = 'none';
         });
@@ -3187,10 +3189,8 @@ function switchMapStatViewByBtn(mapBtn, stats1Btn, stats2Btn)
         
         // Показываем/скрываем date-navigator в зависимости от активной вкладки
         const dateNavigatorWrapper = document.querySelector('.date-navigator-wrapper');
-        if (activeContainer === mapContainer) {
-            dateNavigatorWrapper.style.display = 'block';
-        } else {
-            dateNavigatorWrapper.style.display = 'none';
+        if (dateNavigatorWrapper) {
+            dateNavigatorWrapper.style.display = activeContainer === mapContainer ? 'block' : 'none';
         }
         
         // Перерисовываем карту при возвращении на вкладку
@@ -3200,8 +3200,24 @@ function switchMapStatViewByBtn(mapBtn, stats1Btn, stats2Btn)
             }, 100);
         }
     }
+
+    // «Карта» также сбрасывает режимы границ (?regions / ?directions):
+    // возвращаемся к обычной карте без раскрашенных наложений.
+    function resetMapMode() {
+        const params = new URLSearchParams(window.location.search);
+        if (!params.has('regions') && !params.has('directions')) return false;
+        params.delete('regions');
+        params.delete('directions');
+        const query = params.toString();
+        window.location.href = window.location.pathname + (query ? '?' + query : '');
+        return true;
+    }
+
     // Обработчики кнопок
-    mapBtn.addEventListener('click', () => switchView(mapBtn, mapContainer));
+    mapBtn.addEventListener('click', () => {
+        if (resetMapMode()) return;
+        switchView(mapBtn, mapContainer);
+    });
     if (stats1Btn) stats1Btn.addEventListener('click', () => switchView(stats1Btn, stats1Container));
     if (stats2Btn) stats2Btn.addEventListener('click', () => switchView(stats2Btn, stats2Container));
 }

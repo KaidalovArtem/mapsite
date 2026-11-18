@@ -858,12 +858,53 @@ if (new URLSearchParams(window.location.search).has('regions')) {
     let regionsStats = null;
     let regionsLayer = null;
 
-    function findOblastGroup() {
-        const groups = Array.isArray(window.permanentLayerGroups) ? window.permanentLayerGroups : [];
-        for (let index = 0; index < groups.length; index++) {
-            if (groups[index].layerName === 'Области') return groups[index];
+    // Цвет группы областей: все области группы рисуются одним цветом группы.
+    // Палитры приходят из stats.json (regionGroups), чтобы карта и статистика
+    // не разъезжались.
+    function regionGroupOf(id) {
+        const groups = regionsStats && Array.isArray(regionsStats.regionGroups) ? regionsStats.regionGroups : [];
+        for (let g = 0; g < groups.length; g++) {
+            const group = groups[g];
+            const index = Array.isArray(group.regions) ? group.regions.indexOf(id) : -1;
+            if (index === -1) continue;
+            const colors = Array.isArray(group.colors) && group.colors.length ? group.colors : ['#c81e0f'];
+            return { group: group, color: colors[index % colors.length] };
         }
         return null;
+    }
+
+    function regionBorderColor(id) {
+        const found = id ? regionGroupOf(id) : null;
+        return found && found.group.color ? found.group.color : '#c81e0f';
+    }
+
+    function applyRegionColors() {
+        if (!regionsLayer || !regionsStats) return;
+        const regionDefs = Array.isArray(regionsStats.regions) ? regionsStats.regions : [];
+        const idByName = {};
+        regionDefs.forEach(function (region) { idByName[region.name] = region.id; });
+        regionsLayer.eachLayer(function (polygon) {
+            const color = regionBorderColor(idByName[polygon.regionName]);
+            polygon.setStyle({ color: color, fillColor: color });
+        });
+    }
+
+    function findPermanentGroup(name) {
+        const groups = Array.isArray(window.permanentLayerGroups) ? window.permanentLayerGroups : [];
+        for (let index = 0; index < groups.length; index++) {
+            if (groups[index].layerName === name) return groups[index];
+        }
+        return null;
+    }
+
+    // В режиме статистики областей обычные границы областей и конституционная
+    // граница РФ дублируют раскрашенные полигоны — убираем их с карты.
+    // Слои пересобираются заново, поэтому скрываем при каждом permanent-layers-ready.
+    function hideDuplicatePermanentLayers() {
+        ['Области', 'RuUaBorder'].forEach(function (name) {
+            const group = findPermanentGroup(name);
+            if (group && map.hasLayer(group)) map.removeLayer(group);
+        });
     }
 
     function updateRegionLabels() {
@@ -882,6 +923,7 @@ if (new URLSearchParams(window.location.search).has('regions')) {
         regionsLayer.eachLayer(function (polygon) {
             const id = idByName[polygon.regionName];
             const region = id ? byId[id] : null;
+            const borderColor = regionBorderColor(id);
             let html = '<div class="direction-label-inner"><b>' + regionEscape(polygon.regionName || 'Область') + '</b>';
             if (region && period) {
                 const netClass = region.net > 0 ? 'gain' : region.net < 0 ? 'loss' : '';
@@ -902,7 +944,10 @@ if (new URLSearchParams(window.location.search).has('regions')) {
             if (typeof polygon.setTooltipContent === 'function') polygon.setTooltipContent(html);
             const tooltip = polygon.getTooltip && polygon.getTooltip();
             const element = tooltip && tooltip.getElement && tooltip.getElement();
-            if (element) element.style.display = show ? '' : 'none';
+            if (element) {
+                element.style.display = show ? '' : 'none';
+                element.style.border = '2px solid ' + borderColor;
+            }
         });
 
         const hint = document.querySelector('.region-hint');
@@ -913,37 +958,39 @@ if (new URLSearchParams(window.location.search).has('regions')) {
     }
 
     function buildRegionsLayer() {
-        if (regionsLayer) return;
-        const group = findOblastGroup();
-        if (!group) return;
+        if (!regionsLayer) {
+            const group = findPermanentGroup('Области');
+            if (!group) return;
 
-        const layer = L.featureGroup();
-        group.eachLayer(function (source) {
-            if (typeof source.getLatLngs !== 'function') return;
-            const polygon = L.polygon(source.getLatLngs(), {
-                color: '#c81e0f',
-                weight: 2,
-                opacity: 0.9,
-                fillColor: '#c81e0f',
-                fillOpacity: 0.05,
-                interactive: false,
-                pane: 'vectorPoly'
+            const layer = L.featureGroup();
+            group.eachLayer(function (source) {
+                if (typeof source.getLatLngs !== 'function') return;
+                const polygon = L.polygon(source.getLatLngs(), {
+                    color: '#c81e0f',
+                    weight: 2,
+                    opacity: 0.9,
+                    fillColor: '#c81e0f',
+                    fillOpacity: 0.05,
+                    interactive: false,
+                    pane: 'vectorPoly'
+                });
+                polygon.regionName = source.kmlName || '';
+                layer.addLayer(polygon);
             });
-            polygon.regionName = source.kmlName || '';
-            layer.addLayer(polygon);
-        });
-        if (!layer.getLayers().length) return;
+            if (!layer.getLayers().length) return;
 
-        layer.addTo(map);
-        regionsLayer = layer;
-        if (map.hasLayer(group)) map.removeLayer(group);
-        map.on('zoomend', updateRegionLabels);
-        updateRegionLabels();
+            layer.addTo(map);
+            regionsLayer = layer;
+            map.on('zoomend', updateRegionLabels);
+            applyRegionColors();
+            updateRegionLabels();
 
-        if (typeof urlCoords === 'undefined' || !urlCoords) {
-            const bounds = layer.getBounds();
-            if (bounds && bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
+            if (typeof urlCoords === 'undefined' || !urlCoords) {
+                const bounds = layer.getBounds();
+                if (bounds && bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
+            }
         }
+        hideDuplicatePermanentLayers();
     }
 
     window.addEventListener('permanent-layers-ready', buildRegionsLayer);
@@ -953,7 +1000,10 @@ if (new URLSearchParams(window.location.search).has('regions')) {
         .then(function (response) { return response.ok ? response.json() : null; })
         .then(function (data) {
             regionsStats = data;
-            if (regionsLayer) updateRegionLabels();
+            if (regionsLayer) {
+                applyRegionColors();
+                updateRegionLabels();
+            }
         })
         .catch(function (error) {
             console.warn('Не удалось загрузить статистику для подписей областей:', error);

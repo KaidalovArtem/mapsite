@@ -229,14 +229,18 @@ test('KML контуров областей: только замкнутые к�
     assert.ok(rings[0].polygon.length >= 4);
 });
 
-test('Области.kml: семь замкнутых контуров с реальными площадями', () => {
+test('Области.kml: восемь замкнутых контуров с реальными площадями', () => {
     const text = fs.readFileSync(path.join(ROOT, 'kml/PermanentObjects/Области.kml'), 'utf8');
     const regions = StatsEngine.parseKmlRings(text);
-    assert.equal(regions.length, 7);
+    assert.equal(regions.length, 8);
     const sumy = regions.find(region => region.name === 'Сумская область');
     assert.ok(sumy, 'нет Сумской области');
     const area = StatsEngine.ringAreaKm2(sumy.polygon);
     assert.ok(area > 23600 && area < 23900, 'площадь Сумской ' + area);
+    const chernihiv = regions.find(region => region.name === 'Черниговская область');
+    assert.ok(chernihiv, 'нет Черниговской области');
+    const chernihivArea = StatsEngine.ringAreaKm2(chernihiv.polygon);
+    assert.ok(chernihivArea > 31700 && chernihivArea < 31900, 'площадь Черниговской ' + chernihivArea);
     assert.ok(regions.every(region => region.polygon[0][0] === region.polygon[region.polygon.length - 1][0]));
 });
 
@@ -319,22 +323,38 @@ test('buildStats: акватория не входит в площадь обл�
 test('stats.json: области с устойчивыми id и долями', () => {
     const data = JSON.parse(fs.readFileSync(path.join(ROOT, 'stats/stats.json'), 'utf8'));
     assert.deepEqual(data.regions.map(region => region.id).sort(), [
-        'dnipropetrovsk', 'dnr', 'kharkiv', 'kherson', 'lnr', 'sumy', 'zaporizhzhia'
+        'chernihiv', 'dnipropetrovsk', 'dnr', 'kharkiv', 'kherson', 'lnr', 'sumy', 'zaporizhzhia'
     ]);
     const byId = {};
     data.regions.forEach(region => { byId[region.id] = region; });
     assert.ok(byId.lnr.periods.at(-1).share > 98, 'ЛНР ' + byId.lnr.periods.at(-1).share);
     assert.ok(byId.dnr.periods.at(-1).share > 80 && byId.dnr.periods.at(-1).share < 90);
     assert.ok(byId.sumy.periods.at(-1).share < 10);
-    assert.equal(data.source.regions.count, 7);
+    assert.equal(data.source.regions.count, 8);
     assert.ok(byId.lnr.areaKm2 > 26000 && byId.lnr.areaKm2 < 27000);
+    assert.ok(byId.chernihiv.areaKm2 > 31700 && byId.chernihiv.areaKm2 < 31900);
     for (const period of data.periods) {
-        assert.equal(period.regions.length, 7, 'period ' + period.month);
+        assert.equal(period.regions.length, 8, 'period ' + period.month);
         const regionGain = period.regions.reduce((sum, region) => sum + region.gain, 0);
         const regionLoss = period.regions.reduce((sum, region) => sum + region.loss, 0);
         assert.ok(regionGain <= period.gain + 0.05, 'gain ' + period.month);
         assert.ok(regionLoss <= period.loss + 0.05, 'loss ' + period.month);
     }
+});
+
+test('stats.json: группы областей покрывают области', () => {
+    const data = JSON.parse(fs.readFileSync(path.join(ROOT, 'stats/stats.json'), 'utf8'));
+    const groups = data.regionGroups || [];
+    assert.equal(groups.length, 2, 'ожидаются две группы');
+    const groupedRegions = groups.flatMap(group => group.regions).sort();
+    assert.deepEqual(groupedRegions, data.regions.map(region => region.id).sort(),
+        'каждая область ровно в одной группе');
+    assert.equal(groups.filter(group => group.total).length, 1, 'итог в процентах только у одной группы');
+    groups.forEach(group => {
+        assert.ok(Array.isArray(group.colors) && group.colors.length >= group.regions.length,
+            'у группы ' + group.id + ' хватает цветов');
+        assert.equal(group.colors[0], group.color, 'цвет группы совпадает с базовым оттенком');
+    });
 });
 
 test('ось времени: шаг сохраняется, последняя точка подписана', () => {
